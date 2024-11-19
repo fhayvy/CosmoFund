@@ -9,6 +9,8 @@ CosmoFund is a decentralized platform that enables individuals to contribute to 
 - Transparent fund management through smart contracts
 - Project proposal submission and review process
 - Reward system for contributors based on project success
+- Project cancellation by creators (if no contributions have been made)
+- Dynamic deadline extensions based on project progress
 
 ## Smart Contract
 
@@ -19,6 +21,8 @@ The core functionality of CosmoFund is implemented in a Clarity smart contract. 
 - `vote`: Allows contributors to vote on project proposals
 - `withdraw-funds`: Permits project creators to withdraw funds if the project reaches its funding goal
 - `refund`: Allows contributors to get a refund if a project doesn't meet its funding goal
+- `cancel-project`: Enables project creators to cancel their projects if no contributions have been made
+- `extend-deadline`: Allows project creators to extend the deadline under specific conditions
 
 ## Getting Started
 
@@ -74,10 +78,33 @@ The core functionality of CosmoFund is implemented in a Clarity smart contract. 
    (contract-call? .cosmofund refund u1)
    ```
 
+6. Cancel a project (for project creators):
+   ```
+   (contract-call? .cosmofund cancel-project u1)
+   ```
+
+7. Extend project deadline (for project creators):
+   ```
+   (contract-call? .cosmofund extend-deadline u1 u32000000)
+   ```
+
+## Dynamic Deadline Extensions
+
+Project creators can extend the deadline of their projects under the following conditions:
+- The project has reached at least 75% of its funding goal
+- The extension request is made before the current deadline
+- The extension is for no more than 30 days
+- The project has not been extended more than 3 times
+
 ## Contributing
 
-We welcome contributions to CosmoFund! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) file for details on how to get started.
+Contributions are welcome to CosmosFund! If you'd like to contribute, please follow these steps:
 
+1. Fork the repository
+2. Create your feature branch (git checkout -b feature/AmazingFeature)
+3. Commit your changes (git commit -m 'Add some AmazingFeature')
+4. Push to the branch (git push origin feature/AmazingFeature)
+5. Open a Pull Request
 
 ## Acknowledgments
 
