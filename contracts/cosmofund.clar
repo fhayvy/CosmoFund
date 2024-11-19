@@ -45,9 +45,13 @@
 
 ;; Submit a new project
 (define-public (submit-project (name (string-ascii 50)) (goal uint) (deadline uint))
-  (let ((project-id (+ (var-get project-nonce) u1)))
+  (let (
+    (project-id (+ (var-get project-nonce) u1))
+    (name-length (len name))
+  )
     (asserts! (> deadline block-height) ERR_DEADLINE_PASSED)
     (asserts! (> goal u0) ERR_INSUFFICIENT_FUNDS)
+    (asserts! (and (> name-length u0) (<= name-length u50)) ERR_INVALID_INPUT)
     (asserts! (is-none (map-get? projects { project-id: project-id })) ERR_ALREADY_EXISTS)
     (map-set projects
       { project-id: project-id }
