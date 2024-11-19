@@ -9,6 +9,11 @@
 (define-constant ERR_GOAL_NOT_REACHED (err u105))
 (define-constant ERR_INVALID_INPUT (err u106))
 (define-constant ERR_CONTRIBUTIONS_EXIST (err u107))
+(define-constant ERR_EXTENSION_NOT_ALLOWED (err u108))
+
+;; Configuration
+(define-constant EXTENSION_THRESHOLD u75) ;; 75% of the goal
+(define-constant MAX_EXTENSION_DAYS u30)
 
 ;; Data Maps
 (define-map projects 
@@ -19,7 +24,8 @@
     goal: uint, 
     deadline: uint, 
     total-raised: uint, 
-    is-active: bool 
+    is-active: bool,
+    extensions-used: uint
   }
 )
 
@@ -61,7 +67,8 @@
         goal: goal, 
         deadline: deadline, 
         total-raised: u0, 
-        is-active: true 
+        is-active: true,
+        extensions-used: u0
       }
     )
     (var-set project-nonce project-id)
@@ -155,6 +162,31 @@
     (map-set projects
       { project-id: project-id }
       (merge project { is-active: false })
+    )
+    (ok true)
+  )
+)
+
+;; Extend project deadline
+(define-public (extend-deadline (project-id uint) (new-deadline uint))
+  (let (
+    (project (unwrap! (map-get? projects { project-id: project-id }) ERR_NOT_FOUND))
+    (current-deadline (get deadline project))
+    (extension-days (/ (- new-deadline current-deadline) u144)) ;; Assuming 144 blocks per day
+  )
+    (asserts! (project-exists project-id) ERR_NOT_FOUND)
+    (asserts! (is-eq tx-sender (get creator project)) ERR_UNAUTHORIZED)
+    (asserts! (get is-active project) ERR_UNAUTHORIZED)
+    (asserts! (<= block-height current-deadline) ERR_DEADLINE_PASSED)
+    (asserts! (<= extension-days MAX_EXTENSION_DAYS) ERR_INVALID_INPUT)
+    (asserts! (>= (* (get total-raised project) u100) (* (get goal project) EXTENSION_THRESHOLD)) ERR_EXTENSION_NOT_ALLOWED)
+    (asserts! (< (get extensions-used project) u3) ERR_EXTENSION_NOT_ALLOWED)
+    (map-set projects
+      { project-id: project-id }
+      (merge project { 
+        deadline: new-deadline,
+        extensions-used: (+ (get extensions-used project) u1)
+      })
     )
     (ok true)
   )
