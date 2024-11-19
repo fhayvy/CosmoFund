@@ -8,6 +8,7 @@
 (define-constant ERR_DEADLINE_PASSED (err u104))
 (define-constant ERR_GOAL_NOT_REACHED (err u105))
 (define-constant ERR_INVALID_INPUT (err u106))
+(define-constant ERR_CONTRIBUTIONS_EXIST (err u107))
 
 ;; Data Maps
 (define-map projects 
@@ -133,6 +134,24 @@
     (asserts! (< (get total-raised project) (get goal project)) ERR_UNAUTHORIZED)
     (try! (as-contract (stx-transfer? (get amount contribution) tx-sender tx-sender)))
     (map-delete contributions { project-id: project-id, contributor: tx-sender })
+    (ok true)
+  )
+)
+
+;; Cancel a project (for project creators)
+(define-public (cancel-project (project-id uint))
+  (let (
+    (project (unwrap! (map-get? projects { project-id: project-id }) ERR_NOT_FOUND))
+  )
+    (asserts! (project-exists project-id) ERR_NOT_FOUND)
+    (asserts! (is-eq tx-sender (get creator project)) ERR_UNAUTHORIZED)
+    (asserts! (get is-active project) ERR_UNAUTHORIZED)
+    (asserts! (<= block-height (get deadline project)) ERR_DEADLINE_PASSED)
+    (asserts! (is-eq (get total-raised project) u0) ERR_CONTRIBUTIONS_EXIST)
+    (map-set projects
+      { project-id: project-id }
+      (merge project { is-active: false })
+    )
     (ok true)
   )
 )
