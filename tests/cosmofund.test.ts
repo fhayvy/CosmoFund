@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mocking Clarinet and Stacks blockchain environment
 const mockContractCall = vi.fn();
-const mockBlockHeight = vi.fn(() => 1000);
+const mockBlockHeight = vi.fn(() => 1000); // Mock block height
 
 // Replace with your actual function that simulates contract calls
 const clarity = {
@@ -10,147 +10,198 @@ const clarity = {
   getBlockHeight: mockBlockHeight,
 };
 
-describe('CosmoFund Smart Contract', () => {
+describe('CosmoFund Smart Contract Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks(); // Clear mocks before each test
   });
 
-  it('should allow a user to submit a project', async () => {
-    // Arrange
-    const userPrincipal = 'ST1USER...';
-    const projectName = 'Space Exploration Mission';
-    const goal = 1000000; // uSTX
-    const deadline = 1100;
+  describe('Project Submission', () => {
+    it('should allow a user to submit a project', async () => {
+      // Arrange
+      const projectName = 'Space Exploration Mission';
+      const goal = 1000000; // uSTX
+      const deadline = 1100;
 
-    // Mock project submission logic
-    mockContractCall.mockResolvedValueOnce({ ok: 1 }); // Project ID returned
+      mockContractCall.mockResolvedValueOnce({ ok: 1 }); // Mock response: project ID = 1
 
-    // Act: Simulate submitting a project
-    const submitResult = await clarity.call('submit-project', [projectName, goal, deadline]);
+      // Act
+      const submitResult = await clarity.call('submit-project', [projectName, goal, deadline]);
 
-    // Assert: Check if the project submission was successful
-    expect(submitResult.ok).toBe(1);
+      // Assert
+      expect(submitResult.ok).toBe(1);
+    });
+
+    it('should prevent submission of a project with invalid input', async () => {
+      // Arrange
+      const projectName = '';
+      const goal = 0; // Invalid goal
+      const deadline = 900; // Past block height
+
+      mockContractCall.mockResolvedValueOnce({ error: 'invalid input' });
+
+      // Act
+      const submitResult = await clarity.call('submit-project', [projectName, goal, deadline]);
+
+      // Assert
+      expect(submitResult.error).toBe('invalid input');
+    });
   });
 
-  it('should allow a user to contribute to a project', async () => {
-    // Arrange
-    const contributorPrincipal = 'ST1CONTRIBUTOR...';
-    const projectId = 1;
-    const contributionAmount = 50000; // uSTX
+  describe('Contributions', () => {
+    it('should allow a user to contribute to a project', async () => {
+      // Arrange
+      const projectId = 1;
+      const contributionAmount = 50000; // uSTX
 
-    // Mock contribution logic
-    mockContractCall.mockResolvedValueOnce({ ok: true });
+      mockContractCall.mockResolvedValueOnce({ ok: true });
 
-    // Act: Simulate contributing to the project
-    const contributeResult = await clarity.call('contribute', [projectId, contributionAmount]);
+      // Act
+      const contributeResult = await clarity.call('contribute', [projectId, contributionAmount]);
 
-    // Assert: Check if the contribution was successful
-    expect(contributeResult.ok).toBe(true);
+      // Assert
+      expect(contributeResult.ok).toBe(true);
+    });
+
+    it('should prevent contributions to a non-existent project', async () => {
+      // Arrange
+      const projectId = 999; // Non-existent project
+      const contributionAmount = 1000; // uSTX
+
+      mockContractCall.mockResolvedValueOnce({ error: 'not found' });
+
+      // Act
+      const contributeResult = await clarity.call('contribute', [projectId, contributionAmount]);
+
+      // Assert
+      expect(contributeResult.error).toBe('not found');
+    });
+
+    it('should prevent contributions with insufficient amount', async () => {
+      // Arrange
+      const projectId = 1;
+      const contributionAmount = 0; // Invalid amount
+
+      mockContractCall.mockResolvedValueOnce({ error: 'insufficient funds' });
+
+      // Act
+      const contributeResult = await clarity.call('contribute', [projectId, contributionAmount]);
+
+      // Assert
+      expect(contributeResult.error).toBe('insufficient funds');
+    });
   });
 
-  it('should prevent contributions to a non-existent project', async () => {
-    // Arrange
-    const contributorPrincipal = 'ST1CONTRIBUTOR...';
-    const projectId = 999; // Non-existent project ID
-    const contributionAmount = 1000; // uSTX
+  describe('Withdrawals', () => {
+    it('should allow the project creator to withdraw funds if the goal is reached', async () => {
+      // Arrange
+      const projectId = 1;
 
-    // Mock contribution logic
-    mockContractCall.mockResolvedValueOnce({ error: 'not found' });
+      mockContractCall.mockResolvedValueOnce({ ok: true });
 
-    // Act: Simulate contributing to a non-existent project
-    const contributeResult = await clarity.call('contribute', [projectId, contributionAmount]);
+      // Act
+      const withdrawResult = await clarity.call('withdraw-funds', [projectId]);
 
-    // Assert: Check if the correct error is thrown
-    expect(contributeResult.error).toBe('not found');
+      // Assert
+      expect(withdrawResult.ok).toBe(true);
+    });
+
+    it('should prevent withdrawal if the goal is not reached', async () => {
+      // Arrange
+      const projectId = 1;
+
+      mockContractCall.mockResolvedValueOnce({ error: 'goal not reached' });
+
+      // Act
+      const withdrawResult = await clarity.call('withdraw-funds', [projectId]);
+
+      // Assert
+      expect(withdrawResult.error).toBe('goal not reached');
+    });
   });
 
-  it('should allow a project creator to withdraw funds after goal is reached', async () => {
-    // Arrange
-    const creatorPrincipal = 'ST1CREATOR...';
-    const projectId = 1;
+  describe('Refunds', () => {
+    it('should allow contributors to get refunds if the project fails', async () => {
+      // Arrange
+      const projectId = 1;
 
-    // Mock withdrawal logic
-    mockContractCall.mockResolvedValueOnce({ ok: true });
+      mockContractCall.mockResolvedValueOnce({ ok: true });
 
-    // Act: Simulate withdrawing funds
-    const withdrawResult = await clarity.call('withdraw-funds', [projectId]);
+      // Act
+      const refundResult = await clarity.call('refund', [projectId]);
 
-    // Assert: Check if the withdrawal was successful
-    expect(withdrawResult.ok).toBe(true);
+      // Assert
+      expect(refundResult.ok).toBe(true);
+    });
+
+    it('should prevent refunds if the project goal is met', async () => {
+      // Arrange
+      const projectId = 1;
+
+      mockContractCall.mockResolvedValueOnce({ error: 'unauthorized' });
+
+      // Act
+      const refundResult = await clarity.call('refund', [projectId]);
+
+      // Assert
+      expect(refundResult.error).toBe('unauthorized');
+    });
   });
 
-  it('should prevent withdrawal if the goal is not reached', async () => {
-    // Arrange
-    const creatorPrincipal = 'ST1CREATOR...';
-    const projectId = 1;
+  describe('Project Cancellation', () => {
+    it('should allow the creator to cancel a project before it has contributions', async () => {
+      // Arrange
+      const projectId = 1;
 
-    // Mock withdrawal logic
-    mockContractCall.mockResolvedValueOnce({ error: 'goal not reached' });
+      mockContractCall.mockResolvedValueOnce({ ok: true });
 
-    // Act: Simulate withdrawing funds before goal is reached
-    const withdrawResult = await clarity.call('withdraw-funds', [projectId]);
+      // Act
+      const cancelResult = await clarity.call('cancel-project', [projectId]);
 
-    // Assert: Check if the correct error is thrown
-    expect(withdrawResult.error).toBe('goal not reached');
+      // Assert
+      expect(cancelResult.ok).toBe(true);
+    });
+
+    it('should prevent cancellation if contributions exist', async () => {
+      // Arrange
+      const projectId = 1;
+
+      mockContractCall.mockResolvedValueOnce({ error: 'contributions exist' });
+
+      // Act
+      const cancelResult = await clarity.call('cancel-project', [projectId]);
+
+      // Assert
+      expect(cancelResult.error).toBe('contributions exist');
+    });
   });
 
-  it('should allow contributors to refund if the project fails', async () => {
-    // Arrange
-    const contributorPrincipal = 'ST1CONTRIBUTOR...';
-    const projectId = 1;
+  describe('Deadline Extensions', () => {
+    it('should allow the creator to extend the project deadline', async () => {
+      // Arrange
+      const projectId = 1;
+      const newDeadline = 1200;
 
-    // Mock refund logic
-    mockContractCall.mockResolvedValueOnce({ ok: true });
+      mockContractCall.mockResolvedValueOnce({ ok: true });
 
-    // Act: Simulate refunding contribution
-    const refundResult = await clarity.call('refund', [projectId]);
+      // Act
+      const extendResult = await clarity.call('extend-deadline', [projectId, newDeadline]);
 
-    // Assert: Check if the refund was successful
-    expect(refundResult.ok).toBe(true);
-  });
+      // Assert
+      expect(extendResult.ok).toBe(true);
+    });
 
-  it('should prevent refunds if the project goal is reached', async () => {
-    // Arrange
-    const contributorPrincipal = 'ST1CONTRIBUTOR...';
-    const projectId = 1;
+    it('should prevent deadline extension if the threshold is not met', async () => {
+      // Arrange
+      const projectId = 1;
+      const newDeadline = 1200;
 
-    // Mock refund logic
-    mockContractCall.mockResolvedValueOnce({ error: 'unauthorized' });
+      mockContractCall.mockResolvedValueOnce({ error: 'extension not allowed' });
 
-    // Act: Simulate refund request after goal is reached
-    const refundResult = await clarity.call('refund', [projectId]);
+      // Act
+      const extendResult = await clarity.call('extend-deadline', [projectId, newDeadline]);
 
-    // Assert: Check if the correct error is thrown
-    expect(refundResult.error).toBe('unauthorized');
-  });
-
-  it('should allow a project creator to cancel a project before it receives contributions', async () => {
-    // Arrange
-    const creatorPrincipal = 'ST1CREATOR...';
-    const projectId = 1;
-
-    // Mock project cancellation logic
-    mockContractCall.mockResolvedValueOnce({ ok: true });
-
-    // Act: Simulate project cancellation
-    const cancelResult = await clarity.call('cancel-project', [projectId]);
-
-    // Assert: Check if the project cancellation was successful
-    expect(cancelResult.ok).toBe(true);
-  });
-
-  it('should prevent cancellation if contributions exist', async () => {
-    // Arrange
-    const creatorPrincipal = 'ST1CREATOR...';
-    const projectId = 1;
-
-    // Mock project cancellation logic
-    mockContractCall.mockResolvedValueOnce({ error: 'contributions exist' });
-
-    // Act: Simulate project cancellation with contributions
-    const cancelResult = await clarity.call('cancel-project', [projectId]);
-
-    // Assert: Check if the correct error is thrown
-    expect(cancelResult.error).toBe('contributions exist');
+      // Assert
+      expect(extendResult.error).toBe('extension not allowed');
+    });
   });
 });
