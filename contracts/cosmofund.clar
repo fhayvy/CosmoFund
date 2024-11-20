@@ -10,10 +10,15 @@
 (define-constant ERR_INVALID_INPUT (err u106))
 (define-constant ERR_CONTRIBUTIONS_EXIST (err u107))
 (define-constant ERR_EXTENSION_NOT_ALLOWED (err u108))
+(define-constant ERR_VOTING_PERIOD_NOT_ENDED (err u109))
+(define-constant ERR_VOTING_THRESHOLD_NOT_MET (err u110))
 
 ;; Configuration
 (define-constant EXTENSION_THRESHOLD u75) ;; 75% of the goal
 (define-constant MAX_EXTENSION_DAYS u30)
+(define-constant VOTING_PERIOD_DAYS u7)
+(define-constant MIN_VOTE_THRESHOLD_PERCENT u60) ;; 60% of votes must be in favor
+(define-constant MIN_VOTE_COUNT_THRESHOLD u10) ;; At least 10 votes required
 
 ;; Data Maps
 (define-map projects 
@@ -25,7 +30,10 @@
     deadline: uint, 
     total-raised: uint, 
     is-active: bool,
-    extensions-used: uint
+    extensions-used: uint,
+    vote-end-time: uint,
+    total-votes: uint,
+    votes-in-favor: uint
   }
 )
 
@@ -45,6 +53,14 @@
 ;; Helper function to check if a project exists
 (define-private (project-exists (project-id uint))
   (is-some (map-get? projects { project-id: project-id }))
+)
+
+;; Helper function to calculate voting percentage
+(define-private (calculate-vote-percentage (votes-in-favor uint) (total-votes uint))
+  (if (is-eq total-votes u0)
+    u0
+    (/ (* votes-in-favor u100) total-votes)
+  )
 )
 
 ;; Functions
@@ -68,7 +84,10 @@
         deadline: deadline, 
         total-raised: u0, 
         is-active: true,
-        extensions-used: u0
+        extensions-used: u0,
+        vote-end-time: (+ deadline (* VOTING_PERIOD_DAYS u144)), ;; Assuming 144 blocks per day
+        total-votes: u0,
+        votes-in-favor: u0
       }
     )
     (var-set project-nonce project-id)
@@ -107,10 +126,18 @@
   )
     (asserts! (project-exists project-id) ERR_NOT_FOUND)
     (asserts! (get is-active project) ERR_UNAUTHORIZED)
-    (asserts! (<= block-height (get deadline project)) ERR_DEADLINE_PASSED)
+    (asserts! (<= block-height (get vote-end-time project)) ERR_DEADLINE_PASSED)
+    (asserts! (is-none (map-get? votes { project-id: project-id, voter: tx-sender })) ERR_ALREADY_EXISTS)
     (map-set votes
       { project-id: project-id, voter: tx-sender }
       { in-favor: in-favor }
+    )
+    (map-set projects
+      { project-id: project-id }
+      (merge project {
+        total-votes: (+ (get total-votes project) u1),
+        votes-in-favor: (if in-favor (+ (get votes-in-favor project) u1) (get votes-in-favor project))
+      })
     )
     (ok true)
   )
@@ -124,7 +151,9 @@
     (asserts! (project-exists project-id) ERR_NOT_FOUND)
     (asserts! (is-eq tx-sender (get creator project)) ERR_UNAUTHORIZED)
     (asserts! (>= (get total-raised project) (get goal project)) ERR_GOAL_NOT_REACHED)
-    (asserts! (> block-height (get deadline project)) ERR_DEADLINE_PASSED)
+    (asserts! (> block-height (get vote-end-time project)) ERR_VOTING_PERIOD_NOT_ENDED)
+    (asserts! (>= (get total-votes project) MIN_VOTE_COUNT_THRESHOLD) ERR_VOTING_THRESHOLD_NOT_MET)
+    (asserts! (>= (calculate-vote-percentage (get votes-in-favor project) (get total-votes project)) MIN_VOTE_THRESHOLD_PERCENT) ERR_VOTING_THRESHOLD_NOT_MET)
     (try! (as-contract (stx-transfer? (get total-raised project) tx-sender (get creator project))))
     (map-set projects
       { project-id: project-id }
@@ -141,8 +170,12 @@
     (contribution (unwrap! (map-get? contributions { project-id: project-id, contributor: tx-sender }) ERR_NOT_FOUND))
   )
     (asserts! (project-exists project-id) ERR_NOT_FOUND)
-    (asserts! (> block-height (get deadline project)) ERR_DEADLINE_PASSED)
-    (asserts! (< (get total-raised project) (get goal project)) ERR_UNAUTHORIZED)
+    (asserts! (> block-height (get vote-end-time project)) ERR_VOTING_PERIOD_NOT_ENDED)
+    (asserts! (or
+      (< (get total-raised project) (get goal project))
+      (< (get total-votes project) MIN_VOTE_COUNT_THRESHOLD)
+      (< (calculate-vote-percentage (get votes-in-favor project) (get total-votes project)) MIN_VOTE_THRESHOLD_PERCENT)
+    ) ERR_UNAUTHORIZED)
     (try! (as-contract (stx-transfer? (get amount contribution) tx-sender tx-sender)))
     (map-delete contributions { project-id: project-id, contributor: tx-sender })
     (ok true)
@@ -185,6 +218,7 @@
       { project-id: project-id }
       (merge project { 
         deadline: new-deadline,
+        vote-end-time: (+ new-deadline (* VOTING_PERIOD_DAYS u144)),
         extensions-used: (+ (get extensions-used project) u1)
       })
     )
@@ -204,4 +238,19 @@
 
 (define-read-only (get-vote (project-id uint) (voter principal))
   (map-get? votes { project-id: project-id, voter: voter })
+)
+
+(define-read-only (get-voting-status (project-id uint))
+  (match (map-get? projects { project-id: project-id })
+    project (ok {
+      total-votes: (get total-votes project),
+      votes-in-favor: (get votes-in-favor project),
+      vote-percentage: (calculate-vote-percentage (get votes-in-favor project) (get total-votes project)),
+      threshold-met: (and
+        (>= (get total-votes project) MIN_VOTE_COUNT_THRESHOLD)
+        (>= (calculate-vote-percentage (get votes-in-favor project) (get total-votes project)) MIN_VOTE_THRESHOLD_PERCENT)
+      )
+    })
+    ERR_NOT_FOUND
+  )
 )
